@@ -1,5 +1,6 @@
 import json
 import sys
+from email import policy
 
 import click
 from botocore.exceptions import ClientError
@@ -154,15 +155,22 @@ def cmd_set_acl(ctx, bucket_name, object_key, acl):
 def cmd_create_policy(ctx, bucket_name, prefix):
     """Create a public-read bucket policy for the given prefixes."""
     client = ctx.obj["client"]
-    existing = read_bucket_policy(client, bucket_name)
-    if existing:
-        click.echo(f"Bucket '{bucket_name}' already has a policy:")
-        click.echo(json.dumps(existing, indent=2))
-        return
-    policy = generate_public_read_policy(bucket_name, list(prefix))
-    create_bucket_policy(client, bucket_name, policy)
-    click.echo(f"Policy applied for prefixes: {', '.join(prefix)}")
-    click.echo(json.dumps(policy, indent=2))
+    try:
+        existing = read_bucket_policy(client, bucket_name)
+        if existing:
+            click.echo(f"Bucket '{bucket_name}' already has a policy:")
+            click.echo(json.dumps(existing, indent=2))
+            return
+    except ClientError as e:
+        click.echo(f"Failed to read policy for bucket: {bucket_name} : {e}", err=True)
+
+    try:
+        public_policy = generate_public_read_policy(bucket_name, list(prefix))
+        create_bucket_policy(client, bucket_name, public_policy)
+        click.echo(f"Policy applied for prefixes: {', '.join(prefix)}")
+        click.echo(json.dumps(public_policy, indent=2))
+    except ClientError as e:
+        click.echo(f"Failed to create policy for bucket: {bucket_name} : {e}", err=True)
 
 
 @cli.command("read-policy")

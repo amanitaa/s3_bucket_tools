@@ -43,8 +43,7 @@ def create_bucket_policy(s3_client, bucket_name: str, policy: dict) -> None:
             Policy=json.dumps(policy),
         )
         logger.info("Policy applied to bucket '%s'.", bucket_name)
-    except ClientError as e:
-        logger.error("Failed to set policy on bucket '%s': %s", bucket_name, e)
+    except ClientError:
         raise
 
 
@@ -58,7 +57,6 @@ def read_bucket_policy(s3_client, bucket_name: str) -> dict | None:
         if e.response["Error"]["Code"] == "NoSuchBucketPolicy":
             logger.info("Bucket '%s' has no policy.", bucket_name)
             return None
-        logger.error("Failed to read policy for bucket '%s': %s", bucket_name, e)
         raise
 
 

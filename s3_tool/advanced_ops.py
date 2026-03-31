@@ -19,8 +19,7 @@ def get_versioning_status(s3_client, bucket_name: str) -> str:
         status = response.get("Status", "Disabled")
         logger.info("Versioning status for '%s': %s", bucket_name, status)
         return status
-    except ClientError as e:
-        logger.error("Failed to get versioning status: %s", e)
+    except ClientError:
         raise
 
 

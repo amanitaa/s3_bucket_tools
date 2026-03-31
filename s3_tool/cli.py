@@ -278,15 +278,17 @@ def cmd_delete_object(ctx, bucket_name, key, confirm_delete):
 def cmd_versioning_status(ctx, bucket_name, enable):
     """Check (and optionally enable) versioning on a bucket."""
     client = ctx.obj["client"]
-    status = get_versioning_status(client, bucket_name)
-
-    if status == "Enabled":
-        click.echo(f"Versioning is ENABLED on '{bucket_name}'.")
-    else:
-        click.echo(f"Versioning is {status or 'DISABLED'} on '{bucket_name}'.")
-        if enable:
-            enable_versioning(client, bucket_name)
-            click.echo(f"Versioning has been enabled on '{bucket_name}'.")
+    try:
+        status = get_versioning_status(client, bucket_name)
+        if status == 'Enabled':
+            click.echo(f"Versioning is ENABLED on '{bucket_name}'.")
+        else:
+            click.echo(f"Versioning is {status or 'DISABLED'} on '{bucket_name}'.")
+            if enable:
+                enable_versioning(client, bucket_name)
+                click.echo(f"Versioning has been enabled on '{bucket_name}'.")
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
 
 
 @cli.command("list-versions")

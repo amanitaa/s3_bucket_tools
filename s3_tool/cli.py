@@ -1,6 +1,10 @@
 import json
 import sys
+
 import click
+from botocore.exceptions import ClientError
+
+from requests.exceptions import HTTPError
 
 from s3_tool.client import init_client
 from s3_tool.bucket_ops import list_buckets, create_bucket, delete_bucket, bucket_exists
@@ -114,7 +118,11 @@ def cmd_upload_from_url(ctx, bucket_name, url, key):
     except ValueError as e:
         click.echo(f"Validation error: {e}", err=True)
         sys.exit(1)
-
+    except HTTPError as e:
+        click.echo(f"HTTPError: {e}", err=True)
+        sys.exit(1)
+    except ClientError as e:
+        click.echo(f"ClientError: {e}", err=True)
 
 @cli.command("set-acl")
 @click.argument("bucket_name")

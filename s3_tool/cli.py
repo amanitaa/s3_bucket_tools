@@ -241,11 +241,13 @@ def cmd_set_lifecycle(ctx, bucket_name, days, prefix):
 @click.pass_context
 def cmd_get_lifecycle(ctx, bucket_name):
     """Show the lifecycle policy of a bucket."""
-    rules = get_lifecycle_policy(ctx.obj["client"], bucket_name)
-    if rules is None:
-        click.echo(f"Bucket '{bucket_name}' has no lifecycle policy.")
-    else:
-        click.echo(json.dumps(rules, indent=2, default=str))
+    try:
+        if rules := get_lifecycle_policy(ctx.obj["client"], bucket_name) is None:
+            click.echo(f"Bucket '{bucket_name}' has no lifecycle policy.")
+        else:
+            click.echo(json.dumps(rules, indent=2, default=str))
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
 
 
 @cli.command("delete-object")

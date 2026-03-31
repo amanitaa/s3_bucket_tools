@@ -84,11 +84,5 @@ def set_object_access_policy(s3_client, bucket_name: str, object_key: str, acl: 
             ACL=acl,
         )
         logger.info("ACL '%s' set on s3://%s/%s", acl, bucket_name, object_key)
-    except ClientError as e:
-        logger.error(
-            "Failed to set ACL on object '%s' in bucket '%s': %s",
-            object_key,
-            bucket_name,
-            e,
-        )
+    except ClientError:
         raise

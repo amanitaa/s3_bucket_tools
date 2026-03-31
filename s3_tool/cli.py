@@ -124,6 +124,7 @@ def cmd_upload_from_url(ctx, bucket_name, url, key):
     except ClientError as e:
         click.echo(f"ClientError: {e}", err=True)
 
+
 @cli.command("set-acl")
 @click.argument("bucket_name")
 @click.argument("object_key")
@@ -139,8 +140,11 @@ def cmd_upload_from_url(ctx, bucket_name, url, key):
 @click.pass_context
 def cmd_set_acl(ctx, bucket_name, object_key, acl):
     """Set ACL on an S3 object."""
-    set_object_access_policy(ctx.obj["client"], bucket_name, object_key, acl)
-    click.echo(f"ACL '{acl}' applied to s3://{bucket_name}/{object_key}")
+    try:
+        set_object_access_policy(ctx.obj["client"], bucket_name, object_key, acl)
+        click.echo(f"ACL '{acl}' applied to s3://{bucket_name}/{object_key}")
+    except ClientError as e:
+        click.echo(f"Failed to set ACL on object {object_key} in bucket {bucket_name}: {e}", err=True)
 
 
 @cli.command("create-policy")

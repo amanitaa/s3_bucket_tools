@@ -57,11 +57,23 @@ def cmd_list_buckets(ctx):
 @click.pass_context
 def cmd_create_bucket(ctx, bucket_name, region):
     """Create a bucket."""
-    created = create_bucket(ctx.obj["client"], bucket_name, region)
-    if created:
-        click.echo(f"Bucket '{bucket_name}' created successfully.")
-    else:
-        click.echo(f"Bucket '{bucket_name}' already exists.")
+    try:
+        created = create_bucket(ctx.obj["client"], bucket_name, region)
+
+        if created:
+            click.echo(f"Bucket '{bucket_name}' created successfully.")
+        else:
+            click.echo(f"Bucket '{bucket_name}' already exists in your account.")
+
+    except PermissionError as e:
+        click.echo(f"{str(e)}", err=True)
+
+    except RuntimeError as e:
+        click.echo(f"{str(e)}", err=True)
+
+    except Exception as e:
+        click.echo(f"Unexpected error: {str(e)}", err=True)
+        raise click.ClickException(str(e)) from None
 
 
 @cli.command("delete-bucket")

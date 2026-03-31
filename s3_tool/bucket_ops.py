@@ -8,13 +8,19 @@ logger = get_logger(__name__)
 def bucket_exists(s3_client, bucket_name: str) -> bool:
     try:
         s3_client.head_bucket(Bucket=bucket_name)
-        logger.debug("Bucket '%s' exists.", bucket_name)
+        logger.debug("Bucket '%s' exists and belongs to your account.", bucket_name)
         return True
     except ClientError as e:
-        if e.response["Error"]["Code"] == "404":
+        code = e.response["Error"]["Code"]
+        if code == "404":
             logger.debug("Bucket '%s' does not exist.", bucket_name)
             return False
-        logger.error("Error checking bucket '%s': %s", bucket_name, e)
+        if code == "403":
+            raise PermissionError(
+                f"Bucket name '{bucket_name}' is already taken by another AWS account. "
+                "Please choose a different, more unique bucket name."
+            )
+        logger.error("Unexpected error checking bucket '%s': %s", bucket_name, e)
         raise
 
 
@@ -32,9 +38,12 @@ def list_buckets(s3_client) -> list[dict]:
 def create_bucket(s3_client, bucket_name: str, region: str = None) -> bool:
     region = region or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
-    if bucket_exists(s3_client, bucket_name):
-        logger.warning("Bucket '%s' already exists.", bucket_name)
-        return False
+    try:
+        if bucket_exists(s3_client, bucket_name):
+            logger.warning("Bucket '%s' already exists in your account.", bucket_name)
+            return False
+    except PermissionError as e:
+        raise e
 
     try:
         if region == "us-east-1":

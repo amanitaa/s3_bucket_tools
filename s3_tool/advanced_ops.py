@@ -9,8 +9,7 @@ def delete_object(s3_client, bucket_name: str, key: str) -> None:
     try:
         s3_client.delete_object(Bucket=bucket_name, Key=key)
         logger.info("Deleted object s3://%s/%s", bucket_name, key)
-    except ClientError as e:
-        logger.error("Failed to delete object '%s': %s", key, e)
+    except ClientError:
         raise
 
 

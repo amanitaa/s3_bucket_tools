@@ -264,8 +264,11 @@ def cmd_delete_object(ctx, bucket_name, key, confirm_delete):
     Example:
         s3-tool delete-object my-bucket images/photo.jpg -del
     """
-    delete_object(ctx.obj["client"], bucket_name, key)
-    click.echo(f"Deleted s3://{bucket_name}/{key}")
+    try:
+        delete_object(ctx.obj["client"], bucket_name, key)
+        click.echo(f"Deleted s3://{bucket_name}/{key}")
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
 
 
 @cli.command("versioning-status")

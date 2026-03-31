@@ -178,11 +178,13 @@ def cmd_create_policy(ctx, bucket_name, prefix):
 @click.pass_context
 def cmd_read_policy(ctx, bucket_name):
     """Print the current bucket policy."""
-    policy = read_bucket_policy(ctx.obj["client"], bucket_name)
-    if policy:
-        click.echo(json.dumps(policy, indent=2))
-    else:
-        click.echo(f"Bucket '{bucket_name}' has no policy.")
+    try:
+        if existing := read_bucket_policy(ctx.obj["client"], bucket_name):
+            click.echo(json.dumps(existing, indent=2))
+        else:
+            click.echo(f"Bucket '{bucket_name}' has no policy.")
+    except ClientError as e:
+        click.echo(f"Failed to read policy for bucket: {bucket_name} : {e}", err=True)
 
 
 @cli.command("upload")

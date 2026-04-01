@@ -228,12 +228,15 @@ def cmd_upload(ctx, bucket_name, file_path, key, large, validate_mime, chunk_mb)
 @click.pass_context
 def cmd_set_lifecycle(ctx, bucket_name, days, prefix):
     """Set a lifecycle policy that auto-deletes objects after N days."""
-    set_lifecycle_policy(ctx.obj["client"], bucket_name, days, prefix)
-    msg = f"Lifecycle policy set: objects"
-    if prefix:
-        msg += f" under '{prefix}'"
-    msg += f" will be deleted after {days} day(s)."
-    click.echo(msg)
+    try:
+        set_lifecycle_policy(ctx.obj["client"], bucket_name, days, prefix)
+        msg = f"Lifecycle policy set: objects"
+        if prefix:
+            msg += f" under '{prefix}'"
+        msg += f" will be deleted after {days} day(s)."
+        click.echo(msg)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
 
 
 @cli.command("get-lifecycle")
@@ -242,7 +245,7 @@ def cmd_set_lifecycle(ctx, bucket_name, days, prefix):
 def cmd_get_lifecycle(ctx, bucket_name):
     """Show the lifecycle policy of a bucket."""
     try:
-        if rules := get_lifecycle_policy(ctx.obj["client"], bucket_name) is None:
+        if (rules := get_lifecycle_policy(ctx.obj["client"], bucket_name)) is None:
             click.echo(f"Bucket '{bucket_name}' has no lifecycle policy.")
         else:
             click.echo(json.dumps(rules, indent=2, default=str))
@@ -297,7 +300,12 @@ def cmd_versioning_status(ctx, bucket_name, enable):
 @click.pass_context
 def cmd_list_versions(ctx, bucket_name, key):
     """List all versions of an object (newest first)."""
-    versions = list_object_versions(ctx.obj["client"], bucket_name, key)
+    try:
+        versions = list_object_versions(ctx.obj["client"], bucket_name, key)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        return
+
     if not versions:
         click.echo(f"No versions found for '{key}'.")
         return
@@ -321,7 +329,12 @@ def cmd_list_versions(ctx, bucket_name, key):
 @click.pass_context
 def cmd_restore_version(ctx, bucket_name, key):
     """Restore the previous version of an object as the new latest version."""
-    restored = restore_previous_version(ctx.obj["client"], bucket_name, key)
+    try:
+        restored = restore_previous_version(ctx.obj["client"], bucket_name, key)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        return
+
     if restored:
         click.echo(f"Restored version '{restored}' as new latest for '{key}'.")
     else:
@@ -348,7 +361,11 @@ def cmd_organize(ctx, bucket_name, dry_run):
     else:
         click.echo(f"Organizing '{bucket_name}' by file extension...\n")
 
-    counts = organize_by_extension(ctx.obj["client"], bucket_name, dry_run=dry_run)
+    try:
+        counts = organize_by_extension(ctx.obj["client"], bucket_name, dry_run=dry_run)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        return
 
     if not counts:
         click.echo("Nothing to move — bucket is empty or already organized.")

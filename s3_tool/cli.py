@@ -28,6 +28,7 @@ from s3_tool.advanced_ops import (
     enable_versioning,
     list_object_versions,
     restore_previous_version,
+    rollback_to_first_version,
     organize_by_extension,
 )
 
@@ -339,6 +340,24 @@ def cmd_restore_version(ctx, bucket_name, key):
         click.echo(f"Restored version '{restored}' as new latest for '{key}'.")
     else:
         click.echo(f"No previous version available for '{key}'. Nothing to restore.")
+
+
+@cli.command("rollback-to-first")
+@click.argument("bucket_name")
+@click.argument("key")
+@click.pass_context
+def cmd_rollback_to_first(ctx, bucket_name, key):
+    """Rollback an object to its first (oldest) version."""
+    try:
+        restored = rollback_to_first_version(ctx.obj["client"], bucket_name, key)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        return
+
+    if restored:
+        click.echo(f"Rolled back '{key}' to first version '{restored}'.")
+    else:
+        click.echo(f"No older version available for '{key}'. Nothing to rollback.")
 
 
 @cli.command("organize")

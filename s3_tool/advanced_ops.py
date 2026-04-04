@@ -80,6 +80,36 @@ def restore_previous_version(s3_client, bucket_name: str, key: str) -> str | Non
         raise
 
 
+def rollback_to_first_version(s3_client, bucket_name: str, key: str) -> str | None:
+    versions = list_object_versions(s3_client, bucket_name, key)
+
+    if len(versions) < 2:
+        logger.warning("No older version available for '%s'.", key)
+        return None
+
+    first = versions[-1]
+    version_id = first["VersionId"]
+    logger.info("Rolling back '%s' to first version '%s'.", key, version_id)
+
+    copy_source = {
+        "Bucket": bucket_name,
+        "Key": key,
+        "VersionId": version_id,
+    }
+
+    try:
+        s3_client.copy_object(
+            CopySource=copy_source,
+            Bucket=bucket_name,
+            Key=key,
+        )
+        logger.info("First version restored as new latest for '%s'.", key)
+        return version_id
+    except ClientError as e:
+        logger.error("Failed to rollback to first version: %s", e)
+        raise
+
+
 def _list_all_objects(s3_client, bucket_name: str) -> list[str]:
     keys = []
     paginator = s3_client.get_paginator("list_objects_v2")

@@ -171,3 +171,50 @@ def organize_by_extension(s3_client, bucket_name: str, dry_run: bool = False) ->
         counts[ext_folder] += 1
 
     return dict(counts)
+
+
+def set_website_hosting(
+    s3_client,
+    bucket_name: str,
+    index_document: str = "index.html",
+    error_document: str = "error.html",
+) -> None:
+    try:
+        s3_client.put_bucket_website(
+            Bucket=bucket_name,
+            WebsiteConfiguration={
+                "IndexDocument": {"Suffix": index_document},
+                "ErrorDocument": {"Key": error_document},
+            },
+        )
+        logger.info(
+            "Static website hosting enabled on '%s' (index=%s, error=%s).",
+            bucket_name, index_document, error_document,
+        )
+    except ClientError as e:
+        logger.error("Failed to enable website hosting on '%s': %s", bucket_name, e)
+        raise
+
+
+def get_website_hosting(s3_client, bucket_name: str) -> dict | None:
+    try:
+        response = s3_client.get_bucket_website(Bucket=bucket_name)
+        response.pop("ResponseMetadata", None)
+        logger.info("Retrieved website configuration for '%s'.", bucket_name)
+        return response
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchWebsiteConfiguration":
+            logger.info("No website configuration found for '%s'.", bucket_name)
+            return None
+        logger.error("Failed to get website configuration for '%s': %s", bucket_name, e)
+        raise
+
+
+def delete_website_hosting(s3_client, bucket_name: str) -> None:
+    try:
+        s3_client.delete_bucket_website(Bucket=bucket_name)
+        logger.info("Website hosting disabled on '%s'.", bucket_name)
+    except ClientError as e:
+        logger.error("Failed to disable website hosting on '%s': %s", bucket_name, e)
+        raise
+

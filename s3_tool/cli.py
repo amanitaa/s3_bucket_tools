@@ -1,6 +1,5 @@
 import json
 import sys
-from email import policy
 
 import click
 from botocore.exceptions import ClientError
@@ -30,6 +29,9 @@ from s3_tool.advanced_ops import (
     restore_previous_version,
     rollback_to_first_version,
     organize_by_extension,
+    set_website_hosting,
+    get_website_hosting,
+    delete_website_hosting,
 )
 
 
@@ -40,6 +42,60 @@ def cli(ctx):
     ctx.ensure_object(dict)
     ctx.obj["client"] = init_client()
 
+
+
+@cli.command("enable-website")
+@click.argument("bucket_name")
+@click.option("--index", default="index.html", show_default=True, help="Index document filename.")
+@click.option("--error", default="error.html", show_default=True, help="Error document filename.")
+@click.pass_context
+def cmd_enable_website(ctx, bucket_name, index, error):
+    """Enable static website hosting on a bucket."""
+    try:
+        set_website_hosting(ctx.obj["client"], bucket_name, index, error)
+        region = ctx.obj["client"].meta.region_name
+        click.echo(f"Static website hosting enabled on '{bucket_name}'.")
+        click.echo(f"  Index document : {index}")
+        click.echo(f"  Error document : {error}")
+        click.echo(f"  Endpoint       : http://{bucket_name}.s3-website-{region}.amazonaws.com")
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+
+
+@cli.command("get-website")
+@click.argument("bucket_name")
+@click.pass_context
+def cmd_get_website(ctx, bucket_name):
+    """Show the static website hosting configuration of a bucket."""
+    try:
+        config = get_website_hosting(ctx.obj["client"], bucket_name)
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
+        return
+
+    if config is None:
+        click.echo(f"Bucket '{bucket_name}' has no website hosting configuration.")
+        return
+
+    index = config.get("IndexDocument", {}).get("Suffix", "-")
+    error = config.get("ErrorDocument", {}).get("Key", "-")
+    region = ctx.obj["client"].meta.region_name
+    click.echo(f"Website hosting on '{bucket_name}':")
+    click.echo(f"  Index document : {index}")
+    click.echo(f"  Error document : {error}")
+    click.echo(f"  Endpoint       : http://{bucket_name}.s3-website-{region}.amazonaws.com")
+
+
+@cli.command("disable-website")
+@click.argument("bucket_name")
+@click.pass_context
+def cmd_disable_website(ctx, bucket_name):
+    """Disable static website hosting on a bucket."""
+    try:
+        delete_website_hosting(ctx.obj["client"], bucket_name)
+        click.echo(f"Static website hosting disabled on '{bucket_name}'.")
+    except ClientError as e:
+        click.echo(f"Error: {e}", err=True)
 
 
 @cli.command("list-buckets")

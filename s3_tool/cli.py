@@ -24,6 +24,7 @@ from s3_tool.upload_ops import (
     _detect_mime_type,
     _folder_from_mime,
 )
+from s3_tool.quote_ops import get_quote, format_quote, save_quote_to_s3
 from s3_tool.advanced_ops import (
     delete_object,
     get_versioning_status,
@@ -518,6 +519,45 @@ def cmd_organize(ctx, bucket_name, dry_run):
     for ext, count in sorted(counts.items()):
         click.echo(f"  {ext} - {count}")
     click.echo(f"\n  Total files moved: {sum(counts.values())}")
+
+
+@cli.command("inspire")
+@click.argument("bucket_name", required=False, default=None)
+@click.option("--author", default=None, metavar="NAME", help="Return a quote by this author.")
+@click.option("--save", is_flag=True, help="Save the quote as JSON to BUCKET_NAME (requires BUCKET_NAME).")
+@click.pass_context
+def cmd_inspire(ctx, bucket_name, author, save):
+    """Fetch an inspirational quote from the Quotable API.
+
+    \b
+    Random quote:         s3-tool inspire
+    By author:            s3-tool inspire --author "Albert Einstein"
+    Save to S3:           s3-tool inspire my-bucket --author "Albert Einstein" --save
+    """
+    if save and not bucket_name:
+        click.echo("Error: BUCKET_NAME is required when using --save.", err=True)
+        sys.exit(1)
+
+    try:
+        data = get_quote(author)
+    except Exception as e:
+        click.echo(f"Error fetching quote: {e}", err=True)
+        sys.exit(1)
+
+    if not data.get("quote"):
+        msg = f"No quotes found for author '{author}'." if author else "No quote returned by API."
+        click.echo(msg, err=True)
+        sys.exit(1)
+
+    click.echo(format_quote(data))
+
+    if save:
+        try:
+            s3_key = save_quote_to_s3(ctx.obj["client"], bucket_name, data)
+            click.echo(f"\nSaved to s3://{bucket_name}/{s3_key}")
+        except ClientError as e:
+            click.echo(f"Error saving to S3: {e}", err=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

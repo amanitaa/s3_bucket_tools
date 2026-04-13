@@ -1,5 +1,7 @@
+import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 from botocore.exceptions import ClientError
 from s3_tool.logger import get_logger
@@ -238,6 +240,58 @@ def organize_by_extension(s3_client, bucket_name: str, dry_run: bool = False) ->
         counts[ext_folder] += 1
 
     return dict(counts)
+
+
+def host_static_website(
+    s3_client,
+    bucket_name: str,
+    source_dir: str,
+    index_doc: str = "index.html",
+    error_doc: str = "error.html",
+) -> str:
+    """Upload *source_dir* to *bucket_name* and configure it as a public static website.
+
+    Steps:
+    1. Create bucket if it does not exist.
+    2. Upload every file in *source_dir* preserving relative paths.
+    3. Enable static website hosting.
+    4. Apply a public-read bucket policy.
+
+    Returns the S3 website endpoint URL.
+    """
+    from s3_tool.policy_ops import generate_public_read_all_policy, create_bucket_policy
+    from s3_tool.upload_ops import _detect_mime_type
+
+    source_path = Path(source_dir).resolve()
+    if not source_path.is_dir():
+        raise NotADirectoryError(f"Source path is not a directory: {source_dir}")
+
+    uploaded = 0
+    for file_path in source_path.rglob("*"):
+        if not file_path.is_file():
+            continue
+        s3_key = file_path.relative_to(source_path).as_posix()
+        mime_type = _detect_mime_type(str(file_path))
+        s3_client.upload_file(
+            str(file_path),
+            bucket_name,
+            s3_key,
+            ExtraArgs={"ContentType": mime_type},
+        )
+        logger.info("Uploaded '%s' -> s3://%s/%s  [%s]", file_path.name, bucket_name, s3_key, mime_type)
+        uploaded += 1
+
+    logger.info("Uploaded %d file(s) to '%s'.", uploaded, bucket_name)
+
+    set_website_hosting(s3_client, bucket_name, index_doc, error_doc)
+
+    policy = generate_public_read_all_policy(bucket_name)
+    create_bucket_policy(s3_client, bucket_name, policy)
+
+    region = s3_client.meta.region_name
+    endpoint = f"http://{bucket_name}.s3-website-{region}.amazonaws.com"
+    logger.info("Static website live at: %s", endpoint)
+    return endpoint
 
 
 def set_website_hosting(

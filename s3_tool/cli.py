@@ -33,6 +33,7 @@ from s3_tool.advanced_ops import (
     rollback_to_first_version,
     delete_old_versions,
     organize_by_extension,
+    host_static_website,
     set_website_hosting,
     get_website_hosting,
     delete_website_hosting,
@@ -46,6 +47,45 @@ def cli(ctx):
     ctx.ensure_object(dict)
     ctx.obj["client"] = init_client()
 
+
+@cli.command("host")
+@click.argument("bucket_name")
+@click.option(
+    "--source", required=True,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Local folder to upload as the website root.",
+)
+@click.option("--index", default="index.html", show_default=True, help="Index document filename.")
+@click.option("--error", default="error.html", show_default=True, help="Error document filename.")
+@click.pass_context
+def cmd_host(ctx, bucket_name, source, index, error):
+    """Deploy a local folder as a public S3 static website.
+
+    \b
+    1. Uploads every file preserving directory structure.
+    2. Enables static website hosting.
+    3. Applies a public-read bucket policy.
+    4. Prints the website URL.
+
+    \b
+    Example:
+      s3-tool host my-static-site --source ./html_demo_site
+    """
+    try:
+        url = host_static_website(
+            ctx.obj["client"], bucket_name, source,
+            index_doc=index, error_doc=error,
+        )
+        click.echo(f"\nWebsite is live at:\n  {url}\n")
+    except NotADirectoryError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except (PermissionError, RuntimeError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except ClientError as e:
+        click.echo(f"AWS Error: {e}", err=True)
+        sys.exit(1)
 
 
 @cli.command("enable-website")

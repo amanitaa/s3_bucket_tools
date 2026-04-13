@@ -10,6 +10,22 @@ def _disable_block_public_access(s3_client, bucket_name: str) -> None:
     logger.info("Public access block removed for bucket '%s'.", bucket_name)
 
 
+def generate_public_read_all_policy(bucket_name: str) -> dict:
+    """Return a bucket policy that allows public GetObject on every object."""
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Sid": "PublicReadAll",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": f"arn:aws:s3:::{bucket_name}/*",
+        }],
+    }
+    logger.debug("Generated public-read-all policy for bucket '%s'.", bucket_name)
+    return policy
+
+
 def generate_public_read_policy(bucket_name: str, prefixes: list[str] = None) -> dict:
     if prefixes is None:
         prefixes = ["dev", "test"]

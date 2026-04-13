@@ -31,6 +31,7 @@ from s3_tool.advanced_ops import (
     list_object_versions,
     restore_previous_version,
     rollback_to_first_version,
+    delete_old_versions,
     organize_by_extension,
     set_website_hosting,
     get_website_hosting,
@@ -349,89 +350,98 @@ def cmd_delete_object(ctx, bucket_name, key, confirm_delete):
         click.echo(f"Error: {e}", err=True)
 
 
-@cli.command("versioning-status")
+@cli.command("versioning")
 @click.argument("bucket_name")
 @click.option("--enable", is_flag=True, help="Enable versioning if currently off.")
+@click.option("--list", "list_key", default=None, metavar="KEY", help="List all versions of an object.")
+@click.option("--restore", "restore_key", default=None, metavar="KEY", help="Restore the previous version of an object.")
+@click.option("--rollback", "rollback_key", default=None, metavar="KEY", help="Rollback an object to its first (oldest) version.")
+@click.option("--purge", "purge_keys", multiple=True, metavar="KEY", help="Delete old versions of an object (repeatable).")
+@click.option("--months", default=6, show_default=True, help="Used with --purge: delete versions older than N months.")
+@click.option("--dry-run", is_flag=True, help="Used with --purge: preview deletions without removing anything.")
+@click.option("--include-latest", is_flag=True, help="Used with --purge: also purge the latest version if old enough.")
 @click.pass_context
-def cmd_versioning_status(ctx, bucket_name, enable):
-    """Check (and optionally enable) versioning on a bucket."""
+def cmd_versioning(ctx, bucket_name, enable, list_key, restore_key, rollback_key,
+                   purge_keys, months, dry_run, include_latest):
+    """Manage object versioning on a bucket.
+
+    \b
+    Show status:    s3-tool versioning my-bucket
+    Enable:         s3-tool versioning my-bucket --enable
+    List versions:  s3-tool versioning my-bucket --list photo.jpg
+    Restore prev:   s3-tool versioning my-bucket --restore photo.jpg
+    Rollback first: s3-tool versioning my-bucket --rollback photo.jpg
+    Purge old:      s3-tool versioning my-bucket --purge photo.jpg --purge video.mp4
+                    s3-tool versioning my-bucket --purge photo.jpg --months 3 --dry-run
+    """
     client = ctx.obj["client"]
     try:
-        status = get_versioning_status(client, bucket_name)
-        if status == 'Enabled':
-            click.echo(f"Versioning is ENABLED on '{bucket_name}'.")
+        if list_key:
+            versions = list_object_versions(client, bucket_name, list_key)
+            if not versions:
+                click.echo(f"No versions found for '{list_key}'.")
+                return
+            click.echo(f"\nVersions of s3://{bucket_name}/{list_key}  ({len(versions)} total)\n")
+            click.echo(f"  {'#':<4} {'Version ID':<36} {'Created':<22} {'Size':>10}  Note")
+            click.echo("  " + "-" * 84)
+            for i, v in enumerate(versions):
+                note = "<-- latest" if i == 0 else ""
+                click.echo(
+                    f"  {i+1:<4} {v['VersionId']:<36} "
+                    f"{v['LastModified'].strftime('%Y-%m-%d %H:%M:%S'):<22} "
+                    f"{v.get('Size', 0):>10}  {note}"
+                )
+
+        elif restore_key:
+            restored = restore_previous_version(client, bucket_name, restore_key)
+            if restored:
+                click.echo(f"Restored version '{restored}' as new latest for '{restore_key}'.")
+            else:
+                click.echo(f"No previous version available for '{restore_key}'. Nothing to restore.")
+
+        elif rollback_key:
+            restored = rollback_to_first_version(client, bucket_name, rollback_key)
+            if restored:
+                click.echo(f"Rolled back '{rollback_key}' to first version '{restored}'.")
+            else:
+                click.echo(f"No older version available for '{rollback_key}'. Nothing to rollback.")
+
+        elif purge_keys:
+            total = 0
+            errors = 0
+            for key in purge_keys:
+                try:
+                    count = delete_old_versions(
+                        client, bucket_name, key,
+                        months=months, dry_run=dry_run, include_latest=include_latest,
+                    )
+                    action = "Would delete" if dry_run else "Deleted"
+                    if count:
+                        click.echo(f"{action} {count} old version(s) for '{key}'.")
+                    else:
+                        click.echo(f"No versions older than {months} month(s) found for '{key}'.")
+                    total += count
+                except ClientError as e:
+                    click.echo(f"Error processing '{key}': {e}", err=True)
+                    errors += 1
+            if len(purge_keys) > 1:
+                action = "Would delete" if dry_run else "Deleted"
+                click.echo(f"\n{action} {total} version(s) across {len(purge_keys)} object(s).")
+            if errors:
+                sys.exit(1)
+
         else:
-            click.echo(f"Versioning is {status or 'DISABLED'} on '{bucket_name}'.")
-            if enable:
-                enable_versioning(client, bucket_name)
-                click.echo(f"Versioning has been enabled on '{bucket_name}'.")
+            status = get_versioning_status(client, bucket_name)
+            if status == "Enabled":
+                click.echo(f"Versioning is ENABLED on '{bucket_name}'.")
+            else:
+                click.echo(f"Versioning is {status or 'DISABLED'} on '{bucket_name}'.")
+                if enable:
+                    enable_versioning(client, bucket_name)
+                    click.echo(f"Versioning has been enabled on '{bucket_name}'.")
+
     except ClientError as e:
         click.echo(f"Error: {e}", err=True)
-
-
-@cli.command("list-versions")
-@click.argument("bucket_name")
-@click.argument("key")
-@click.pass_context
-def cmd_list_versions(ctx, bucket_name, key):
-    """List all versions of an object (newest first)."""
-    try:
-        versions = list_object_versions(ctx.obj["client"], bucket_name, key)
-    except ClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        return
-
-    if not versions:
-        click.echo(f"No versions found for '{key}'.")
-        return
-
-    click.echo(f"\nVersions of s3://{bucket_name}/{key}  ({len(versions)} total)\n")
-    click.echo(f"  {'#':<4} {'Version ID':<36} {'Created':<22} {'Size':>10}  Note")
-    click.echo("  " + "-" * 84)
-    for i, v in enumerate(versions):
-        note = "<-- latest" if i == 0 else ""
-        size = v.get("Size", 0)
-        click.echo(
-            f"  {i+1:<4} {v['VersionId']:<36} "
-            f"{v['LastModified'].strftime('%Y-%m-%d %H:%M:%S'):<22} "
-            f"{size:>10}  {note}"
-        )
-
-
-@cli.command("restore-version")
-@click.argument("bucket_name")
-@click.argument("key")
-@click.pass_context
-def cmd_restore_version(ctx, bucket_name, key):
-    """Restore the previous version of an object as the new latest version."""
-    try:
-        restored = restore_previous_version(ctx.obj["client"], bucket_name, key)
-    except ClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        return
-
-    if restored:
-        click.echo(f"Restored version '{restored}' as new latest for '{key}'.")
-    else:
-        click.echo(f"No previous version available for '{key}'. Nothing to restore.")
-
-
-@cli.command("rollback-to-first")
-@click.argument("bucket_name")
-@click.argument("key")
-@click.pass_context
-def cmd_rollback_to_first(ctx, bucket_name, key):
-    """Rollback an object to its first (oldest) version."""
-    try:
-        restored = rollback_to_first_version(ctx.obj["client"], bucket_name, key)
-    except ClientError as e:
-        click.echo(f"Error: {e}", err=True)
-        return
-
-    if restored:
-        click.echo(f"Rolled back '{key}' to first version '{restored}'.")
-    else:
-        click.echo(f"No older version available for '{key}'. Nothing to rollback.")
 
 
 @cli.command("organize")

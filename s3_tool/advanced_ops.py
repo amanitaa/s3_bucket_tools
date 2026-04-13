@@ -1,4 +1,6 @@
 from collections import defaultdict
+from datetime import datetime, timezone, timedelta
+
 from botocore.exceptions import ClientError
 from s3_tool.logger import get_logger
 
@@ -108,6 +110,71 @@ def rollback_to_first_version(s3_client, bucket_name: str, key: str) -> str | No
     except ClientError as e:
         logger.error("Failed to rollback to first version: %s", e)
         raise
+
+
+def delete_old_versions(
+    s3_client,
+    bucket_name: str,
+    key: str,
+    months: int = 6,
+    dry_run: bool = False,
+    include_latest: bool = False,
+) -> int:
+    """Delete versions (and delete markers) of *key* older than *months* months.
+
+    The current (latest) version is preserved unless *include_latest* is True.
+    Returns the number of versions that were (or would be) deleted.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=months * 30)
+
+    try:
+        response = s3_client.list_object_versions(Bucket=bucket_name, Prefix=key)
+    except ClientError as e:
+        logger.error("Failed to list versions for '%s': %s", key, e)
+        raise
+
+    versions = sorted(
+        [v for v in response.get("Versions", []) if v["Key"] == key],
+        key=lambda v: v["LastModified"],
+        reverse=True,
+    )
+    delete_markers = [dm for dm in response.get("DeleteMarkers", []) if dm["Key"] == key]
+
+    to_delete: list[dict] = []
+
+    for i, v in enumerate(versions):
+        is_latest = i == 0
+        if is_latest and not include_latest:
+            continue
+        if v["LastModified"] < cutoff:
+            to_delete.append({"Key": key, "VersionId": v["VersionId"]})
+            logger.debug(
+                "Marking version %s (%s) of '%s' for deletion.",
+                v["VersionId"], v["LastModified"].date(), key,
+            )
+
+    for dm in delete_markers:
+        if dm["LastModified"] < cutoff:
+            to_delete.append({"Key": key, "VersionId": dm["VersionId"]})
+            logger.debug(
+                "Marking delete marker %s (%s) of '%s' for deletion.",
+                dm["VersionId"], dm["LastModified"].date(), key,
+            )
+
+    if not to_delete:
+        logger.info("No old versions to delete for '%s'.", key)
+        return 0
+
+    if dry_run:
+        logger.info("[DRY RUN] Would delete %d version(s) for '%s'.", len(to_delete), key)
+        return len(to_delete)
+
+    s3_client.delete_objects(
+        Bucket=bucket_name,
+        Delete={"Objects": to_delete, "Quiet": True},
+    )
+    logger.info("Deleted %d old version(s) for '%s'.", len(to_delete), key)
+    return len(to_delete)
 
 
 def _list_all_objects(s3_client, bucket_name: str) -> list[str]:

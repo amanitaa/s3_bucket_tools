@@ -1,5 +1,6 @@
 import os
 import math
+import mimetypes
 from pathlib import Path
 
 import magic
@@ -24,6 +25,48 @@ ALLOWED_MIME_TYPES = {
 
 MULTIPART_THRESHOLD_MB = 8
 MULTIPART_CHUNKSIZE_MB = 8
+
+
+_SUBTYPE_ALIASES: dict[str, str] = {
+    "jpeg":              "jpg",
+    "plain":             "txt",
+    "x-python":          "py",
+    "x-shellscript":     "sh",
+    "x-javascript":      "js",
+    "x-tar":             "tar",
+    "x-gzip":            "gz",
+    "x-bzip2":           "bz2",
+    "x-7z-compressed":   "7z",
+    "x-rar-compressed":  "rar",
+    "x-executable":      "bin",
+    "x-mach-binary":     "bin",
+    "x-dosexec":         "exe",
+    "x-sharedlib":       "so",
+}
+
+
+def _folder_from_mime(mime_type: str) -> str:
+    """Return a folder name (= file extension) derived from *mime_type*.
+
+    Resolution order:
+    1. ``mimetypes.guess_extension`` for vendor types (``vnd.*``).
+    2. ``_SUBTYPE_ALIASES`` for known subtype-to-extension mappings.
+    3. Strip leading ``x-`` from the raw subtype.
+    4. Use the raw subtype as-is.
+    """
+    subtype = mime_type.split("/")[-1].lower()
+
+    if subtype.startswith("vnd."):
+        ext = mimetypes.guess_extension(mime_type)
+        return ext.lstrip(".").lower() if ext else subtype
+
+    if subtype in _SUBTYPE_ALIASES:
+        return _SUBTYPE_ALIASES[subtype]
+
+    if subtype.startswith("x-"):
+        subtype = subtype[2:]
+
+    return subtype
 
 
 def _detect_mime_type(file_path: str) -> str:

@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 
 import click
 from botocore.exceptions import ClientError
@@ -20,6 +21,8 @@ from s3_tool.upload_ops import (
     upload_large_file,
     set_lifecycle_policy,
     get_lifecycle_policy,
+    _detect_mime_type,
+    _folder_from_mime,
 )
 from s3_tool.advanced_ops import (
     delete_object,
@@ -247,20 +250,35 @@ def cmd_read_policy(ctx, bucket_name):
 @cli.command("upload")
 @click.argument("bucket_name")
 @click.argument("file_path")
-@click.option("--key", default=None, help="S3 key (defaults to filename)")
+@click.option("--key", default=None, help="S3 key (defaults to filename).")
 @click.option("--large", is_flag=True, help="Force multipart upload for large files.")
 @click.option("--validate-mime", is_flag=True, help="Reject unsupported MIME types.")
 @click.option("--chunk-mb", default=8, show_default=True, help="Chunk size in MB (multipart only).")
+@click.option(
+    "--by-mime", is_flag=True,
+    help=(
+        "Auto-route the file into a sub-folder named after its detected extension "
+        "(e.g. jpg/, mp4/, pdf/). python-magic inspects file content, not the extension."
+    ),
+)
 @click.pass_context
-def cmd_upload(ctx, bucket_name, file_path, key, large, validate_mime, chunk_mb):
+def cmd_upload(ctx, bucket_name, file_path, key, large, validate_mime, chunk_mb, by_mime):
     """Upload a local file to S3.
 
     \b
-    Small file:  s3-tool upload my-bucket photo.jpg
-    Large file:  s3-tool upload my-bucket video.mp4 --large
-    With MIME:   s3-tool upload my-bucket photo.jpg --validate-mime
+    Small file:       s3-tool upload my-bucket photo.jpg
+    Large file:       s3-tool upload my-bucket video.mp4 --large
+    MIME validation:  s3-tool upload my-bucket photo.jpg --validate-mime
+    Auto-folder:      s3-tool upload my-bucket data.csv --by-mime
+                      -> s3://my-bucket/csv/data.csv
     """
     try:
+        if by_mime:
+            mime_type = _detect_mime_type(file_path)
+            folder = _folder_from_mime(mime_type)
+            filename = key if key else Path(file_path).name
+            key = f"{folder}/{filename}"
+
         if large:
             s3_key = upload_large_file(
                 ctx.obj["client"], bucket_name, file_path, key,
